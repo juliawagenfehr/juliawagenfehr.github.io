@@ -1,0 +1,623 @@
+---
+title: "Untitled"
+author: "Julia Wagenfehr"
+date: "2/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tigris)
+library(sf)
+library(mapview)
+library(ggplot2)
+```
+
+
+```{r}
+test1 <- read.csv("G:/My Drive/CS 129/lbnl_publicdatafile_dpv_2020_update/TTS_LBNL_public_file_19-Oct-2020_p1.csv")
+
+test2 <- read.csv("G:/My Drive/CS 129/lbnl_publicdatafile_dpv_2020_update/TTS_LBNL_public_file_19-Oct-2020_p2.csv")
+
+test_ca <- test1 %>% filter(state == "CA")
+
+test_ca2 <- test2 %>% filter(state == "CA")
+
+ca_all <- 
+  test_ca %>% 
+  rbind(test_ca2)
+
+rm(test1,test2,test_ca,test_ca2)
+
+```
+
+```{r}
+pge_zips <- read.csv(paste0("G:/My Drive/CS 129/pge/PGE_2020_Q4_ElectricUsageByZip.csv")) %>% dplyr::select(ZIPCODE)
+
+bay_county_list <- c("San Mateo","Santa Clara","Alameda","Contra Costa","Marin","Napa","Sonoma","Solano","San Francisco")
+
+bay_counties <- counties("CA",cb=TRUE) %>% filter(NAME %in% bay_county_list)
+
+
+ca_zip <- zctas(cb = TRUE, state = "CA")
+
+###mod to pge
+bay_zip <- 
+  ca_zip %>% 
+  filter(GEOID10 %in% pge_zips$ZIPCODE)
+  # ca_zip %>% 
+  # st_centroid() %>% 
+  # .[bay_counties,] %>% 
+  # st_set_geometry(NULL) %>% 
+  # left_join(
+  #   ca_zip %>% 
+  #     dplyr::select(GEOID10,geometry),
+  #   by = "GEOID10"
+  # ) %>% 
+  # st_as_sf()
+
+ca_cbgs <- block_groups("CA")
+
+
+bay_cbg_zip <-
+  ca_cbgs %>%
+  st_centroid() %>% 
+  .[bay_zip,] %>% 
+  dplyr::select(GEOID) %>% 
+  st_join(bay_zip) %>% 
+  st_set_geometry(NULL) %>% 
+  dplyr::select(GEOID,GEOID10) %>% 
+  rename("origin_census_block_group" = GEOID)
+
+```
+
+
+```{r}
+#scc_zip <- readRDS("G:/My Drive/CS 129/scc_zip.rds")
+
+bay_all <- 
+  ca_all %>% 
+  filter(zip_code %in% bay_zip$GEOID10) %>% 
+  filter(customer_segment == "RES") %>% 
+  mutate(
+    year = substr(installation_date,8,11),
+    count = 1) %>% 
+  dplyr::select(year,count,system_size_DC,customer_segment,zip_code,city,utility_service_territory)
+
+
+bay_all_grouped <-
+  bay_all %>% 
+  group_by(year,zip_code,utility_service_territory) %>% 
+  summarise(count = sum(count),system_size_DC = sum(system_size_DC)) %>% 
+  mutate(
+    year = as.numeric(year),
+    pre_2013 = ifelse(year <= 2012,1,0)
+  )
+
+bay_all_2012_2020 <-
+  bay_all_grouped %>% 
+  mutate(
+    year = ifelse(pre_2013 == 1,2012,year)
+  ) %>% 
+  group_by(year,zip_code) %>% 
+  summarise(count = sum(count))
+```
+
+
+```{r}
+bay_all_2012 <-
+  bay_all_2012_2020 %>% 
+  filter(year == 2012) %>% 
+  rename(
+    "count_2012" = count
+    ) %>% 
+  ungroup() %>% 
+  dplyr::select(-year)
+
+bay_all_2013 <-
+  bay_all_2012_2020 %>% 
+  filter(year == 2013) %>% 
+  ungroup() %>% 
+  dplyr::select(-year) %>% 
+  rename("count_2013" = "count")
+
+bay_all_2014 <-
+  bay_all_2012_2020 %>% 
+  filter(year == 2014) %>% 
+  ungroup() %>% 
+  dplyr::select(-year) %>% 
+  rename("count_2014" = "count")
+
+bay_all_2015 <-
+  bay_all_2012_2020 %>% 
+  filter(year == 2015) %>% 
+  ungroup() %>% 
+  dplyr::select(-year) %>% 
+  rename("count_2015" = "count")
+
+bay_all_2016 <-
+  bay_all_2012_2020 %>% 
+  filter(year == 2016) %>% 
+  ungroup() %>% 
+  dplyr::select(-year) %>% 
+  rename("count_2016" = "count")
+
+bay_all_2017 <-
+  bay_all_2012_2020 %>% 
+  filter(year == 2017) %>% 
+  ungroup() %>% 
+  dplyr::select(-year) %>% 
+  rename("count_2017" = "count")
+
+bay_all_2018 <-
+  bay_all_2012_2020 %>% 
+  filter(year == 2018) %>% 
+  ungroup() %>% 
+  dplyr::select(-year) %>% 
+  rename("count_2018" = "count")
+
+bay_all_2019 <-
+  bay_all_2012_2020 %>% 
+  filter(year == 2019) %>% 
+  ungroup() %>% 
+  dplyr::select(-year) %>% 
+  rename("count_2019" = "count")
+
+#*********************************************************************
+  
+bay_all_2013_count <-
+  bay_all_2012_2020 %>%
+  filter(year == 2013) %>%
+  rename(
+    "count_2013_init" = count
+  ) %>%
+  left_join(
+    bay_all_2012,
+    by = "zip_code"
+  ) %>%
+  mutate(
+    count_2013 = count_2012 + count_2013_init
+  ) %>%
+  ungroup() %>%
+  dplyr::select(zip_code,count_2013)
+
+bay_all_2014_count <-
+  bay_all_2012_2020 %>%
+  filter(year == 2014) %>%
+  rename(
+    "count_2014_init" = count
+    ) %>%
+  left_join(
+    bay_all_2013_count,
+    by = "zip_code"
+  ) %>%
+  mutate(
+    count_2014 = count_2013 + count_2014_init
+  ) %>%
+  ungroup() %>%
+  dplyr::select(zip_code,count_2014)
+
+bay_all_2015_count <-
+  bay_all_2012_2020 %>%
+  filter(year == 2015) %>%
+  rename(
+    "count_2015_init" = count
+    ) %>%
+  left_join(
+    bay_all_2014_count,
+    by = "zip_code"
+  ) %>%
+  mutate(
+    count_2015 = count_2014 + count_2015_init
+  ) %>%
+  ungroup() %>%
+  dplyr::select(zip_code,count_2015)
+
+bay_all_2016_count <-
+  bay_all_2012_2020 %>%
+  filter(year == 2016) %>%
+  rename(
+    "count_2016_init" = count
+    ) %>%
+  left_join(
+    bay_all_2015_count,
+    by = "zip_code"
+  ) %>%
+  mutate(
+    count_2016 = count_2015 + count_2016_init
+  ) %>%
+  ungroup() %>%
+  dplyr::select(zip_code,count_2016)
+
+bay_all_2017_count <-
+  bay_all_2012_2020 %>%
+  filter(year == 2017) %>%
+  rename(
+    "count_2017_init" = count
+    ) %>%
+  left_join(
+    bay_all_2016_count,
+    by = "zip_code"
+  ) %>%
+  mutate(
+    count_2017 = count_2016 + count_2017_init
+  ) %>%
+  ungroup() %>%
+  dplyr::select(zip_code,count_2017)
+# 
+bay_all_2018_count <-
+  bay_all_2012_2020 %>%
+  filter(year == 2018) %>%
+  rename(
+    "count_2018_init" = count
+    ) %>%
+  left_join(
+    bay_all_2017_count,
+    by = "zip_code"
+  ) %>%
+  mutate(
+    count_2018_full = count_2017 + count_2018_init
+  ) %>%
+  ungroup() %>%
+  dplyr::select(zip_code,count_2018_full)
+# 
+# bay_all_2019 <-
+#   bay_all_2012_2020 %>% 
+#   filter(year == 2019) %>% 
+#   rename(
+#     "count_2019_init" = count
+#     ) %>% 
+#   left_join(
+#     bay_all_2018,
+#     by = "zip_code"
+#   ) %>% 
+#   mutate(
+#     count_2019 = count_2018 + count_2019_init
+#   ) %>% 
+#   ungroup() %>% 
+#   dplyr::select(zip_code,count_2019)
+
+```
+
+
+```{r}
+bay_count_final <-
+  bay_all_2012_2020 %>% 
+  filter(year != 2012) %>% 
+  ungroup() %>% 
+  dplyr::select(-year,-count) %>% 
+  distinct() %>% 
+  # left_join(
+  #   bay_all_2012,
+  #   by = "zip_code"
+  # ) %>% 
+  left_join(
+    bay_all_2013,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    bay_all_2014,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    bay_all_2015,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    bay_all_2016,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    bay_all_2017,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    bay_all_2018,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    bay_all_2019,
+    by = "zip_code"
+  ) 
+
+```
+
+```{r}
+year <- 2013:2020
+quarter <- 1:4
+
+pge_hold <- read.csv(paste0("G:/My Drive/CS 129/pge/PGE_2013_Q1_ElectricUsageByZip.csv"))[numeric(0),]
+temp <- NULL
+
+
+for(i in 1:length(year)){
+  print(i)
+  for(j in 1:length(quarter)){
+    print(j+10)
+    temp <- 
+      read.csv(paste0("G:/My Drive/CS 129/pge/PGE_",year[i],"_Q",quarter[j],"_ElectricUsageByZip.csv")) %>% 
+      filter(CUSTOMERCLASS == "Elec- Residential") 
+    
+    if((i ==7 & j==4) | (i==8 & j == 1)){
+      temp <-
+        temp %>% 
+        rename("ZIPCODE" = ï..ZIPCODE)
+    }
+    
+    temp <-
+      temp %>% 
+      dplyr::select(ZIPCODE,MONTH,YEAR,CUSTOMERCLASS,TOTALCUSTOMERS,TOTALKWH)
+    #print(names(temp))
+    
+    pge_hold <-
+      pge_hold %>% 
+      rbind(temp)
+  }
+}
+
+
+pge_grouped <-
+  pge_hold %>%
+  filter(TOTALKWH != "0") %>% 
+  mutate(
+    TOTALKWH = as.numeric(gsub(",", "", TOTALKWH))
+  ) %>% 
+  group_by(ZIPCODE,YEAR) %>% 
+  summarise(TOTALKWH = sum(TOTALKWH)) %>% 
+  rename(zip_code ="ZIPCODE",year = "YEAR") %>% 
+  filter(zip_code %in% bay_zip$GEOID10)
+
+```
+
+```{r}
+pge_2013 <-
+  pge_grouped %>% 
+  filter(year == 2013) %>% 
+  rename("totalkwh_2013" = TOTALKWH) %>% 
+  dplyr::select(-year)
+
+pge_2014 <-
+  pge_grouped %>% 
+  filter(year == 2014) %>% 
+  rename("totalkwh_2014" = TOTALKWH) %>% 
+  dplyr::select(-year)
+
+pge_2015 <-
+  pge_grouped %>% 
+  filter(year == 2015) %>% 
+  rename("totalkwh_2015" = TOTALKWH) %>% 
+  dplyr::select(-year)
+
+pge_2016 <-
+  pge_grouped %>% 
+  filter(year == 2016) %>% 
+  rename("totalkwh_2016" = TOTALKWH) %>% 
+  dplyr::select(-year)
+
+pge_2017 <-
+  pge_grouped %>% 
+  filter(year == 2017) %>% 
+  rename("totalkwh_2017" = TOTALKWH) %>% 
+  dplyr::select(-year)
+
+pge_2018 <-
+  pge_grouped %>% 
+  filter(year == 2018) %>% 
+  rename("totalkwh_2018" = TOTALKWH) %>% 
+  dplyr::select(-year)
+
+pge_2019 <-
+  pge_grouped %>% 
+  filter(year == 2019) %>% 
+  rename("totalkwh_2019" = TOTALKWH) %>% 
+  dplyr::select(-year)
+
+pge_grouped_all <-
+  pge_2013 %>% 
+  left_join(
+    pge_2014,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    pge_2015,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    pge_2016,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    pge_2017,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    pge_2018,
+    by = "zip_code"
+  ) %>% 
+  left_join(
+    pge_2019,
+    by = "zip_code"
+  ) 
+```
+
+
+```{r}
+bay_final <-
+  bay_count_final %>% 
+  mutate(
+    zip_code = as.numeric(zip_code)
+  ) %>% 
+  left_join(
+    pge_grouped_all,
+    by = c("zip_code" = "zip_code")
+  ) %>% 
+  na.omit()
+```
+
+
+```{r}
+deep_solar_meta <- read.csv("G:/My Drive/CS 129/deepsolar_tract_meta.csv")
+
+deep_solar_all <- read.csv("G:/My Drive/CS 129/deepsolar_tract.csv")
+
+deep_solar_meta_clean <- deep_solar_meta %>% filter(source != "deepsolar")
+
+```
+
+```{r}
+#bay_cbg_zip <- readRDS("G:/My Drive/CS 129/scc_cbg_zcta_conversion.rds")
+
+
+bay_demographic <-
+  bay_cbg_zip %>%
+  #dplyr::select(-pop) %>% 
+  mutate(fips = as.numeric(substr(origin_census_block_group,2,11))) %>% 
+  left_join(
+    deep_solar_all %>% 
+      .[,-c(1:4)], #%>% 
+      #filter(county %in% c("San Mateo County","Santa Clara County","Alameda County","Contra Costa County","Marin County","Napa County","Sonoma County","Solano County","San Francisco County")),
+    by = "fips"
+  )
+
+bay_demographic_avg <-
+  bay_demographic %>% 
+  .[,c(1,2,4,25,41:63,86,87,97,100,103:149)] %>% 
+  group_by(GEOID10) %>% 
+  summarise_at(vars(average_household_income:voting_2016_gop_percentage), mean, na.rm=TRUE) %>% 
+  .[-57,]
+
+bay_demographic_sum <-
+  bay_demographic %>% 
+  .[,c(1,2,26,82,84,85)] %>% 
+  group_by(GEOID10) %>% 
+  summarise_at(vars(population:housing_unit_occupied_count), sum, na.rm=TRUE) %>% 
+  .[-57,]
+  
+
+bay_demographic_all <-
+  bay_demographic_sum %>% 
+  left_join(
+    bay_demographic_avg,
+    by = "GEOID10"
+  )
+```
+
+
+```{r}
+bay_final_combined_init <-
+  bay_final %>% 
+  left_join(
+    bay_demographic_all %>% 
+      mutate(GEOID10 = as.numeric(GEOID10)),
+    by = c("zip_code" = "GEOID10")
+    ) %>% 
+  na.omit()#%>% 
+  #filter(!is.na(education_bachelor)) %>% 
+  #filter(education_bachelor != 0) 
+
+zip_rep <-
+  ca_zip %>% 
+  filter(GEOID10 %in% bay_final_combined_init$zip_code)
+
+mapview(zip_rep)
+
+bay_final_combined <-
+  bay_final_combined_init %>% 
+  dplyr::select(-zip_code,-household_count,-housing_unit_occupied_count,-education_doctoral_rate,-race_two_more_rate,-heating_fuel_none_rate ) 
+
+bay_final_combined <-
+  bay_final_combined %>% 
+  .[,-c(1:6)]
+  
+
+#write.csv(bay_final_combined,"scc_solar_dem_data.csv")
+```
+
+```{r}
+set.seed(123)
+dt  <- sort(sample(nrow(bay_final_combined), nrow(bay_final_combined)*.7))
+
+train<- bay_final_combined[dt,] %>% .[,-c(1:6)]#dplyr::select(count_2018,count_2019) ###remove
+test_init <- bay_final_combined[-dt,] 
+test <- test_init %>%
+  #dplyr::select(-count_2019)
+  #dplyr::select(count_2018) ##change back!!
+  .[,-c(1:7)]
+
+
+lin_mod <-
+  lm(count_2019 ~ .,data = train)
+
+#summary(lin_mod)
+
+predictions <- predict(lin_mod,test) %>% as.data.frame()
+
+pred_diff <- 
+  predictions %>% 
+  rename("predictions" = ".") %>% 
+  cbind(test_init) %>% 
+  dplyr::select(predictions,count_2019) %>% 
+  mutate(error = abs(count_2019 - predictions))
+  #mutate(
+    #error = abs(count_2019 - predictions),
+    #square_error = error * error
+    #)
+  
+
+mean(pred_diff$error)
+
+```
+
+```{r}
+pred_diff_clean <-
+  pred_diff %>% 
+  arrange(count_2019) %>% 
+  mutate(
+    count = NA
+  )
+
+for(i in 1:nrow(pred_diff_clean)){
+  pred_diff_clean$count[i] = i
+}
+
+error_plot <-
+  ggplot(pred_diff_clean, aes(count_2019)) + 
+  #geom_line(aes(y = count_2019, colour = "Actual")) + 
+  geom_line(aes(y = predictions, colour = "Predictions"))
+error_plot
+
+error_plot2 <-
+  ggplot(pred_diff_clean, aes(count)) + 
+  geom_line(aes(y = count_2019, colour = "Actual"))+  
+  geom_line(aes(y = predictions, colour = "Predictions"))
+
+  error_plot2
+
+```
+
+```{r}
+compare_18_19 <-
+  test_init %>% 
+  dplyr::select(count_2019,count_2018) %>% 
+  mutate(compare_error = abs(count_2019 - count_2018))
+  
+mean(compare_18_19$compare_error)
+
+error_plot_compare <-
+  ggplot(compare_18_19, aes(count_2019)) + 
+  #geom_line(aes(y = count_2019, colour = "Actual")) + 
+  geom_line(aes(y = count_2018, colour = "2018"))
+
+error_plot_compare
+
+```
+
+
+
+
+
+
